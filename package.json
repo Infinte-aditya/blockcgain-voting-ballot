@@ -15,6 +15,7 @@
   "keywords": [],
   "type": "module",
   "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^4.2.2",
     "hardhat": "^3.22.0"
   }
 }
