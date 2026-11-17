@@ -8,7 +8,9 @@
   },
   "scripts": {
     "test": "node --test",
-    "lint": "node --check test/*.js"
+    "lint": "node --check test/Voting.behavior.test.js test/consistency.test.js",
+    "dev": "echo \"Open frontend/index.html in your browser (e.g. start frontend/index.html on Windows)\"",
+    "deploy": "npx hardhat run scripts/deploy.js --network localhost"
   },
   "keywords": [],
   "type": "module",
