@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ballot — On-Chain Voting</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<style>
+  :root{
+    --paper:#F3EFE4;
+    --paper-line:#DDD4BF;
+    --ink:#1F2A37;
+    --ink-soft:#4B5A6B;
+    --seal:#8A2E2E;
+    --seal-soft:#B5544F;
+    --gold:#9C7A3C;
+    --mono: 'Courier New', monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    background-image:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px, transparent 1px, transparent 3px);
+    color:var(--ink);
+    font-family:'Georgia','Times New Roman',serif;
+    min-height:100vh;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:48px 24px 80px;}
+
+  header{
+    text-align:center;
+    border-bottom:3px double var(--ink);
+    padding-bottom:20px;
+    margin-bottom:36px;
+  }
+  .eyebrow{
+    font-family:var(--mono);
+    letter-spacing:3px;
+    font-size:11px;
+    color:var(--seal);
+    text-transform:uppercase;
+    margin-bottom:10px;
+  }
+  h1{
+    font-size:38px;
+    margin:0 0 6px;
+    letter-spacing:0.5px;
+  }
+  .sub{
+    color:var(--ink-soft);
+    font-size:14px;
+    font-style:italic;
+  }
+
+  .panel{
+    background:rgba(255,255,255,0.4);
+    border:1px solid var(--paper-line);
+    padding:22px 24px;
+    margin-bottom:24px;
+    position:relative;
+  }
+  .panel::before{
+    content:'';
+    position:absolute;
+    top:6px;left:6px;right:6px;bottom:6px;
+    border:1px solid rgba(31,42,55,0.12);
+    pointer-events:none;
+  }
+  .panel h2{
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:2px;
+    font-family:var(--mono);
+    color:var(--ink-soft);
+    margin:0 0 14px;
+    font-weight:normal;
+  }
+
+  button{
+    font-family:var(--mono);
+    font-size:13px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    background:var(--ink);
+    color:var(--paper);
+    border:none;
+    padding:12px 20px;
+    cursor:pointer;
+    transition:background 0.15s ease;
+  }
+  button:hover{background:var(--seal);}
+  button:disabled{background:#aaa;cursor:not-allowed;}
+  button.secondary{background:transparent;color:var(--ink);border:1px solid var(--ink);}
+  button.secondary:hover{background:var(--ink);color:var(--paper);}
+
+  input[type=text], input[type=number]{
+    font-family:var(--mono);
+    font-size:13px;
+    padding:10px 12px;
+    border:1px solid var(--paper-line);
+    background:#fff;
+    width:100%;
+    margin-bottom:10px;
+  }
+
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+
+  .status-line{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:10px;
+    word-break:break-all;
+  }
+  .status-line.error{color:var(--seal);}
+  .status-line.ok{color:#2E6A3E;}
+
+  .candidate{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:14px 0;
+    border-bottom:1px dashed var(--paper-line);
+  }
+  .candidate:last-child{border-bottom:none;}
+  .candidate .name{font-size:18px;}
+  .candidate .id{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--ink-soft);
+    margin-right:8px;
+  }
+  .candidate .votes{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--ink-soft);
+    min-width:90px;
+    text-align:right;
+  }
+  .candidate button{padding:8px 16px;margin-left:14px;}
+
+  .seal-badge{
+    display:inline-block;
+    border:2px solid var(--seal);
+    color:var(--seal);
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:1.5px;
+    padding:3px 10px;
+    border-radius:2px;
+    text-transform:uppercase;
+  }
+
+  footer{
+    text-align:center;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--ink-soft);
+    margin-top:40px;
+    letter-spacing:1px;
+  }
+
+  .contract-code{
+    max-height:420px;
+    overflow-y:auto;
+    background:#20272f;
+    color:#e8e2d0;
+    font-family:var(--mono);
+    font-size:12px;
+    line-height:1.5;
+    padding:16px;
+    white-space:pre;
+  }
+  details summary{
+    cursor:pointer;
+    font-family:var(--mono);
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--ink-soft);
+    margin-bottom:12px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Distributed Ledger · Election Module</div>
+    <h1>The Public Ballot</h1>
+    <div class="sub">A voting record no single hand can alter</div>
+  </header>
+
+  <div class="panel">
+    <h2>01 — Wallet</h2>
+    <div class="row">
+      <button id="connectBtn">Connect Wallet</button>
+      <span class="seal-badge" id="networkBadge" style="display:none;">Connected</span>
+    </div>
+    <div class="status-line" id="walletStatus">No wallet connected yet.</div>
+  </div>
+
+  <div class="panel">
+    <h2>02 — Contract</h2>
+    <input type="text" id="contractAddress" placeholder="Paste deployed contract address (0x...)">
+    <button id="loadContractBtn" class="secondary">Load Contract</button>
+    <div class="status-line" id="contractStatus">Deploy Voting.sol (Remix / Hardhat) and paste its address above.</div>
+  </div>
+
+  <div class="panel">
+    <h2>03 — Admin Controls</h2>
+    <div class="row" style="margin-bottom:12px;">
+      <button id="openVotingBtn" class="secondary">Open Voting</button>
+      <button id="closeVotingBtn" class="secondary">Close Voting</button>
+    </div>
+    <input type="text" id="registerAddress" placeholder="Voter address to register (0x...)">
+    <button id="registerBtn" class="secondary">Register Voter</button>
+    <div class="status-line" id="adminStatus">Only the deploying address (admin) can use these controls.</div>
+  </div>
+
+  <div class="panel">
+    <h2>04 — Candidates & Voting</h2>
+    <button id="refreshBtn" class="secondary" style="margin-bottom:6px;">Refresh Results</button>
+    <div id="candidateList"></div>
+    <div class="status-line" id="voteStatus"></div>
+  </div>
+
+  <div class="panel">
+    <h2>05 — Winner</h2>
+    <button id="winnerBtn" class="secondary">Reveal Current Leader</button>
+    <div class="status-line" id="winnerStatus"></div>
+  </div>
+
+  <div class="panel">
+    <details>
+      <summary>▸ View Voting.sol source</summary>
+      <div class="contract-code" id="solidityCode">Loading contract source…</div>
+    </details>
+  </div>
+
+  <footer>Ethereum · Solidity ^0.8.20 · ethers.js v5</footer>
+</div>
+
+<script>
+// ---- Contract ABI (matches Voting.sol) ----
+const CONTRACT_ABI = [
+  "function admin() view returns (address)",
+  "function votingOpen() view returns (bool)",
+  "function registerVoter(address _voter)",
+  "function registerVotersBulk(address[] _voterList)",
+  "function setVotingStatus(bool _status)",
+  "function vote(uint256 _candidateId)",
+  "function getCandidate(uint256 _candidateId) view returns (string name, uint256 voteCount)",
+  "function getAllCandidates() view returns (tuple(uint256 id, string name, uint256 voteCount)[])",
+  "function getTotalCandidates() view returns (uint256)",
+  "function getWinner() view returns (string winnerName, uint256 winningVoteCount)",
+  "event VoteCast(address indexed voter, uint256 indexed candidateId)"
+];
+
+let provider, signer, contract, userAddress;
+
+const $ = (id) => document.getElementById(id);
+
+function setStatus(el, msg, type){
+  el.textContent = msg;
+  el.className = "status-line" + (type ? " " + type : "");
+}
+
+// ---- Wallet connect ----
+$("connectBtn").addEventListener("click", async () => {
+  if (!window.ethereum){
+    setStatus($("walletStatus"), "No injected wallet found. Install MetaMask.", "error");
+    return;
+  }
+  try {
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer = provider.getSigner();
+    userAddress = await signer.getAddress();
+    const network = await provider.getNetwork();
+    $("networkBadge").style.display = "inline-block";
+    $("networkBadge").textContent = "Chain ID " + network.chainId;
+    setStatus($("walletStatus"), "Connected as " + userAddress, "ok");
+  } catch (err){
+    setStatus($("walletStatus"), "Connection failed: " + err.message, "error");
+  }
+});
+
+// ---- Load contract ----
+$("loadContractBtn").addEventListener("click", async () => {
+  const addr = $("contractAddress").value.trim();
+  if (!signer){
+    setStatus($("contractStatus"), "Connect your wallet first.", "error");
+    return;
+  }
+  if (!ethers.utils.isAddress(addr)){
+    setStatus($("contractStatus"), "That doesn't look like a valid address.", "error");
+    return;
+  }
+  try {
+    contract = new ethers.Contract(addr, CONTRACT_ABI, signer);
+    const admin = await contract.admin();
+    setStatus($("contractStatus"), "Loaded. Admin address: " + admin, "ok");
+    loadCandidates();
+  } catch (err){
+    setStatus($("contractStatus"), "Could not load contract: " + err.message, "error");
+  }
+});
+
+// ---- Admin actions ----
+$("openVotingBtn").addEventListener("click", () => runAdminTx(() => contract.setVotingStatus(true), "Voting opened."));
+$("closeVotingBtn").addEventListener("click", () => runAdminTx(() => contract.setVotingStatus(false), "Voting closed."));
+$("registerBtn").addEventListener("click", () => {
+  const addr = $("registerAddress").value.trim();
+  if (!ethers.utils.isAddress(addr)){
+    setStatus($("adminStatus"), "Enter a valid address to register.", "error");
+    return;
+  }
+  runAdminTx(() => contract.registerVoter(addr), "Voter registered: " + addr);
+});
+
+async function runAdminTx(fn, successMsg){
+  if (!contract){ setStatus($("adminStatus"), "Load the contract first.", "error"); return; }
+  try {
+    setStatus($("adminStatus"), "Sending transaction…");
+    const tx = await fn();
+    await tx.wait();
+    setStatus($("adminStatus"), successMsg + " (tx: " + tx.hash.slice(0,10) + "…)", "ok");
+    loadCandidates();
+  } catch (err){
+    setStatus($("adminStatus"), "Transaction failed: " + (err.reason || err.message), "error");
+  }
+}
+
+// ---- Candidates ----
+async function loadCandidates(){
+  if (!contract) return;
+  try {
+    const candidates = await contract.getAllCandidates();
+    const list = $("candidateList");
+    list.innerHTML = "";
+    candidates.forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "candidate";
+      row.innerHTML = `
+        <div><span class="id">#${c.id}</span><span class="name">${c.name}</span></div>
+        <div class="row">
+          <span class="votes">${c.voteCount.toString()} votes</span>
+          <button data-id="${c.id}">Vote</button>
+        </div>`;
+      row.querySelector("button").addEventListener("click", () => castVote(c.id));
+      list.appendChild(row);
+    });
+  } catch (err){
+    setStatus($("voteStatus"), "Could not fetch candidates: " + err.message, "error");
+  }
+}
+
+async function castVote(id){
+  if (!contract){ setStatus($("voteStatus"), "Load the contract first.", "error"); return; }
+  try {
+    setStatus($("voteStatus"), "Casting vote…");
+    const tx = await contract.vote(id);
+    await tx.wait();
+    setStatus($("voteStatus"), "Vote recorded on-chain (tx: " + tx.hash.slice(0,10) + "…)", "ok");
+    loadCandidates();
+  } catch (err){
+    setStatus($("voteStatus"), "Vote failed: " + (err.reason || err.message), "error");
+  }
+}
+
+$("refreshBtn").addEventListener("click", loadCandidates);
+
+// ---- Winner ----
+$("winnerBtn").addEventListener("click", async () => {
+  if (!contract){ setStatus($("winnerStatus"), "Load the contract first.", "error"); return; }
+  try {
+    const [name, votes] = await contract.getWinner();
+    setStatus($("winnerStatus"), "Leading: " + name + " with " + votes.toString() + " votes.", "ok");
+  } catch (err){
+    setStatus($("winnerStatus"), "Could not fetch winner: " + err.message, "error");
+  }
+});
+
+// ---- Show Solidity source inline for the demo ----
+$("solidityCode").textContent = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract Voting {
+    address public admin;
+    bool public votingOpen;
+
+    struct Candidate { uint id; string name; uint voteCount; }
+    struct Voter { bool isRegistered; bool hasVoted; uint votedCandidateId; }
+
+    Candidate[] public candidates;
+    mapping(address => Voter) public voters;
+
+    event CandidateAdded(uint indexed candidateId, string name);
+    event VoterRegistered(address indexed voter);
+    event VoteCast(address indexed voter, uint indexed candidateId);
+    event VotingStatusChanged(bool isOpen);
+
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin can perform this action");
+        _;
+    }
+    modifier whenVotingOpen() {
+        require(votingOpen, "Voting is currently closed");
+        _;
+    }
+
+    constructor(string[] memory candidateNames) {
+        admin = msg.sender;
+        votingOpen = false;
+        for (uint i = 0; i < candidateNames.length; i++) {
+            candidates.push(Candidate(i, candidateNames[i], 0));
+            emit CandidateAdded(i, candidateNames[i]);
+        }
+    }
+
+    function registerVoter(address _voter) external onlyAdmin {
+        require(!voters[_voter].isRegistered, "Voter already registered");
+        voters[_voter].isRegistered = true;
+        emit VoterRegistered(_voter);
+    }
+
+    function setVotingStatus(bool _status) external onlyAdmin {
+        votingOpen = _status;
+        emit VotingStatusChanged(_status);
+    }
+
+    function vote(uint _candidateId) external whenVotingOpen {
+        Voter storage sender = voters[msg.sender];
+        require(sender.isRegistered, "You are not a registered voter");
+        require(!sender.hasVoted, "You have already voted");
+        require(_candidateId < candidates.length, "Invalid candidate ID");
+
+        sender.hasVoted = true;
+        sender.votedCandidateId = _candidateId;
+        candidates[_candidateId].voteCount += 1;
+
+        emit VoteCast(msg.sender, _candidateId);
+    }
+
+    function getAllCandidates() external view returns (Candidate[] memory) {
+        return candidates;
+    }
+
+    function getWinner() external view returns (string memory winnerName, uint winningVoteCount) {
+        uint winningId = 0;
+        for (uint i = 1; i < candidates.length; i++) {
+            if (candidates[i].voteCount > candidates[winningId].voteCount) {
+                winningId = i;
+            }
+        }
+        return (candidates[winningId].name, candidates[winningId].voteCount);
+    }
+}
+`;
+</script>
+</body>
+</html>
